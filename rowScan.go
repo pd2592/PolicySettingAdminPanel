@@ -8,33 +8,41 @@ import (
 )
 
 type PB struct {
-	BenefitBundleID string
-	BundleName      string
-	BundleCode      string
-	CompanyID       string
-	MethType        string
-	PolicyBundles   []PolicyBundle
+	BenefitBundleID string         `json:"benefitBundleId"`
+	BundleName      string         `json:"bundleName"`
+	BundleCode      string         `json:"bundleCode"`
+	CompanyID       string         `json:"companyId"`
+	MethType        string         `json:"methType"`
+	PolicyBundles   []PolicyBundle `json:"policybundles"`
 }
 
 type PolicyBundle struct {
-	BenefitTypeID        LabVal
-	Priority             string
-	Benefits             []LabVal
-	CityCatAndAllowances []CityCatAndAllowance
+	BenefitTypeID        LabVal                `json:"benefitTypeId"`
+	Priority             string                `json:"priority"`
+	Benefits             []LabVal              `json:"benefits"`
+	CityCatAndAllowances []CityCatAndAllowance `json:"cityCatAndAllowances"`
 }
 
 type CityCatAndAllowance struct {
-	Label      string
-	Value      string
-	LimitSpent string
-	Min        string
-	Max        string
-	Flex       string
-	FlexAmt    string
+	Label      string `json:"label"`
+	Value      string `json:"value"`
+	LimitSpent string `json:"limitSpent"`
+	Min        string `json:"min"`
+	Max        string `json:"max"`
+	Flex       string `json:"flex"`
+	FlexAmt    string `json:"flexAmt"`
+	StarCat    string `json:"starCat"`
 }
+
+type CityCategoryMap struct {
+	CompanyID string   `json:"companyId"`
+	CityCat   LabVal   `json:"cityCat"`
+	Cities    []LabVal `json:"cities"`
+}
+
 type LabVal struct {
-	Label string
-	Value string
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 type mapStringScan struct {
@@ -44,6 +52,14 @@ type mapStringScan struct {
 	row      map[string]string
 	colCount int
 	colNames []string
+}
+
+func UnmarshalJsonCityCat(jsonStr string) *CityCategoryMap {
+	res := &CityCategoryMap{}
+	err := json.Unmarshal([]byte(jsonStr), res)
+	checkErr(err)
+	//fmt.Println(res)
+	return res
 }
 
 func UnmarshalJsonPolicyBundle(jsonStr string) *PB {

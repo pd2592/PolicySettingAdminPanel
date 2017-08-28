@@ -19,10 +19,11 @@ func serv(table string, methType string, companyID string, Form []string, Column
 			//Columns1 := []string{Columns[1], Columns[2]}
 			//Form2 := []string{Form[0], Form[2]}
 			//Columns2 := []string{Columns[0], Columns[2]}
-			if (table == "city_mapping") && CityMapCheck(Form[1], companyID) != "" {
+			// if (table == "city_mapping") && CityMapCheck(Form[1], companyID) != "" {
 
-				result = "Record already exists in " + CityMapCheck(Form[1], companyID) + " category"
-			} else if (table == "policy_benefit_bundle") && (QueryRow([]string{Form[1], Form[2]}, []string{Columns[1], Columns[2]}, table) != 0 || QueryRow([]string{Form[0], Form[2]}, []string{Columns[0], Columns[2]}, table) != 0) {
+			// 	result = "Record already exists in " + CityMapCheck(Form[1], companyID) + " category"
+			// } else if
+			if (table == "policy_benefit_bundle") && (QueryRow([]string{Form[1], Form[2]}, []string{Columns[1], Columns[2]}, table) != 0 || QueryRow([]string{Form[0], Form[2]}, []string{Columns[0], Columns[2]}, table) != 0) {
 				fmt.Println("inside else if ", Form, "  ", Columns)
 				//	fmt.Println("inside else if ", Form1, "  ", Columns1)
 
@@ -50,8 +51,8 @@ func serv(table string, methType string, companyID string, Form []string, Column
 					result = "Record already exists"
 
 				} else {
-					RowCount := AddRow(Form, Columns, table)
-					result = strconv.FormatInt(RowCount, 10)
+					RowId := AddRow(Form, Columns, table)
+					result = strconv.FormatInt(RowId, 10)
 				}
 				//result = "Record already exists"
 			}
@@ -76,8 +77,16 @@ func serv(table string, methType string, companyID string, Form []string, Column
 		{
 			if table == "city_mapping" {
 				result = ListCity(Form[0])
-			} else if table == "policy_benefit_bundle" || table == "benefit_bundle_type_mapping" || table == "bundle_type_benefit_mapping" || table == "benefit_type_allowance_mapping" {
-				result = ListBundle(table, FormCondVal, ColumnCondVal)
+			} else if table == "city_master" {
+				result = ListAllCity()
+			} else if table == "city_category" {
+				result = ListCityCat(companyID)
+			} else if table == "benefit_type_master" && ColumnCondVal == nil {
+				result = ListBundleRequirements(table, companyID)
+			} else if table == "policy_benefit_bundle" && ColumnCondVal == nil {
+				result = ListBundles(table, companyID)
+			} else if table == "policy_benefit_bundle" && companyID == "" {
+				result = ListBundleDetail(table, FormCondVal, ColumnCondVal)
 			} else {
 				result = ListRow(table, companyID)
 			}
