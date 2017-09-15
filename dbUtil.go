@@ -35,32 +35,29 @@ func EditRow(formVal []string, columnVal []string, formCondVal []string, columnC
 	//column := strings.Join(columns, ",")
 	//value := strings.Join(values, "','")
 	setStr := "SET"
-	fmt.Println(len(columnVal))
+	//fmt.Println(len(columnVal))
 	i := 0
 	for i = 0; i < len(columnVal); i++ {
 		setStr = setStr + " , " + columnVal[i] + " = '" + formVal[i] + "'"
 
 	}
 	setStr = strings.Replace(setStr, "SET ,", " SET", -2)
-
+	//fmt.Println(setStr)
 	conditionStr := createCondStr(formCondVal, columnCondVal)
+	fmt.Println("UPDATE " + table + setStr + conditionStr)
 	stmt, err := db.Exec("UPDATE " + table + setStr + conditionStr)
 
 	checkErr(err)
 
 	rowcnt, err := stmt.RowsAffected()
 	checkErr(err)
-
 	fmt.Println("Row(s) Updated ", rowcnt)
 
 	return rowcnt
-
 }
 
 func QueryRow(values []string, columns []string, table string) int {
-
 	db = GetDB()
-
 	conditionStr := createCondStr(values, columns)
 
 	// select
@@ -71,12 +68,26 @@ func QueryRow(values []string, columns []string, table string) int {
 	fmt.Println(cnt)
 	return cnt
 }
+
+func QueryRowEdit(values []string, columns []string, reqid, table string) int {
+	db = GetDB()
+	conditionStr := createCondStr(values, columns)
+
+	// select
+	var cnt int
+	fmt.Println(">>>>>>>>>>>>", conditionStr)
+	_ = db.QueryRow("select count(*) from " + table + conditionStr + "AND designationMasterId != " + reqid).Scan(&cnt)
+	//fmt.Println(">>>>", cnt)
+	fmt.Println(cnt)
+	return cnt
+}
+
 func ListAllCity() string {
 	db = GetDB()
 	var cities []LabVal
 	var city LabVal
 	//var label string
-	stmt, err := db.Query("SELECT CityId as value, City as label from city_master")
+	stmt, err := db.Query("SELECT cityMasterId as value, cityName as label from citymaster")
 	checkErr(err)
 	for stmt.Next() {
 		err := stmt.Scan(&city.Value, &city.Label)
@@ -108,7 +119,7 @@ func ListCity(citycatId string) string {
 	var labval LabVal
 	var cityCatName string
 	//var label string
-	stmt, err := db.Query("SELECT cmas.City, cmap.CityMappingID from city_mapping as cmap JOIN city_master as cmas ON cmas.CityID = cmap.CityID where cmap.CityCatID = '" + citycatId + "'")
+	stmt, err := db.Query("SELECT cmas.cityName, cmap.CityID from city_mapping as cmap JOIN citymaster as cmas ON cmas.cityMasterId = cmap.CityID where cmap.CityCatID = '" + citycatId + "'")
 	checkErr(err)
 	for stmt.Next() {
 		err := stmt.Scan(&labval.Label, &labval.Value)
@@ -120,6 +131,7 @@ func ListCity(citycatId string) string {
 		}
 		cities = append(cities, labval)
 	}
+	//fmt.Println(cities)
 	err = db.QueryRow("SELECT CityCatName from city_category where CityCatID = '" + citycatId + "'").Scan(&cityCatName)
 	checkErr(err)
 
@@ -367,6 +379,121 @@ func ListBundles(table, companyId string) string {
 	return string(b)
 }
 
+func ListDepartmentDetail(tablename string, formCondVal []string, columnCondVal []string) string {
+	db = GetDB()
+	var departmentVar Department
+	conditionStr := createCondStr(formCondVal, columnCondVal)
+
+	stmt, err := db.Query("select departmentMasterId, departmentName, departmentCode, travelAgencyMasterId from " + tablename + conditionStr)
+	checkErr(err)
+	for stmt.Next() {
+		err := stmt.Scan(&departmentVar.DepartmentID, &departmentVar.DepartmentName, &departmentVar.DepartmentCode, &departmentVar.TravelAgencyMasterID)
+		checkErr(err)
+		departmentVar = Department{
+			DepartmentID:         departmentVar.DepartmentID,
+			DepartmentName:       departmentVar.DepartmentName,
+			DepartmentCode:       departmentVar.DepartmentCode,
+			TravelAgencyMasterID: departmentVar.TravelAgencyMasterID,
+		}
+	}
+	b, err := json.Marshal(departmentVar)
+	checkErr(err)
+	//fmt.Println(string(b))
+	return string(b)
+}
+
+func ListDepartments(table, companyId string) string {
+	db = GetDB()
+	var bundle LabVal
+	var bundlelist []LabVal
+	fmt.Println(companyId + "  " + table)
+	stmt, err := db.Query("select departmentName as label, departmentMasterId as value from " + table + " where travelAgencyMasterId = '" + companyId + "'")
+	checkErr(err)
+
+	for stmt.Next() {
+		err := stmt.Scan(&bundle.Label, &bundle.Value)
+		checkErr(err)
+		bundle = LabVal{
+			Label: bundle.Label,
+			Value: bundle.Value,
+		}
+		bundlelist = append(bundlelist, bundle)
+	}
+	b, err := json.Marshal(bundlelist)
+	return string(b)
+}
+
+func ListDesignationsByDep(table, companyId string, formCondVal, columnCondVal []string) string {
+	db = GetDB()
+	var bundle LabVal
+	var bundlelist []LabVal
+	fmt.Println(companyId + "  " + table)
+
+	conditionStr := createCondStr(formCondVal, columnCondVal)
+
+	stmt, err := db.Query("select designationName as label, designationMasterId as value from " + table + conditionStr + " AND travelAgencyMasterId = '" + companyId + "'")
+	checkErr(err)
+
+	for stmt.Next() {
+		err := stmt.Scan(&bundle.Label, &bundle.Value)
+		checkErr(err)
+		bundle = LabVal{
+			Label: bundle.Label,
+			Value: bundle.Value,
+		}
+		bundlelist = append(bundlelist, bundle)
+	}
+	b, err := json.Marshal(bundlelist)
+	return string(b)
+}
+
+func ListDesignaionDetail(tablename string, formCondVal []string, columnCondVal []string) string {
+	db = GetDB()
+	var designationVar Designation
+	conditionStr := createCondStr(formCondVal, columnCondVal)
+
+	stmt, err := db.Query("select designationMasterId, designationName, designationCode, hierarchyId, travelAgencyMasterId, benefitBundleId, department from " + tablename + conditionStr)
+	checkErr(err)
+	for stmt.Next() {
+		err := stmt.Scan(&designationVar.DesignationID, &designationVar.DesignationName, &designationVar.DesignationCode, &designationVar.HierarchyID, &designationVar.TravelAgencyMasterID, &designationVar.BenefitBundleID, &designationVar.Department)
+		checkErr(err)
+		designationVar = Designation{
+			DesignationID:        designationVar.DesignationID,
+			DesignationName:      designationVar.DesignationName,
+			DesignationCode:      designationVar.DesignationCode,
+			HierarchyID:          designationVar.HierarchyID,
+			TravelAgencyMasterID: designationVar.TravelAgencyMasterID,
+			BenefitBundleID:      designationVar.BenefitBundleID,
+			Department:           designationVar.Department,
+		}
+	}
+	b, err := json.Marshal(designationVar)
+	checkErr(err)
+	//fmt.Println(string(b))
+	return string(b)
+}
+
+func ListDesignations(table, companyId string) string {
+	db = GetDB()
+	var bundle LabVal
+	var bundlelist []LabVal
+	fmt.Println(companyId + "  " + table)
+	stmt, err := db.Query("select designationName as label, designationMasterId as value from " + table + " where travelAgencyMasterId = '" + companyId + "'")
+	checkErr(err)
+
+	for stmt.Next() {
+		err := stmt.Scan(&bundle.Label, &bundle.Value)
+		checkErr(err)
+		bundle = LabVal{
+			Label: bundle.Label,
+			Value: bundle.Value,
+		}
+		bundlelist = append(bundlelist, bundle)
+	}
+	b, err := json.Marshal(bundlelist)
+	return string(b)
+}
+
 func getId(table, requestId string, formCondVal []string, columnCondVal []string) string {
 	db = GetDB()
 	conditionStr := createCondStr(formCondVal, columnCondVal)
@@ -404,11 +531,24 @@ func getId(table, requestId string, formCondVal []string, columnCondVal []string
 // 	return tables
 // }
 
-func DeleteById(tablename string, formCondVal []string, columnCondVal []string) {
+func DeleteById(tablename string, formCondVal []string, columnCondVal []string) string {
 
 	db = GetDB()
-	_, err := db.Exec("delete from " + tablename + createCondStr(formCondVal, columnCondVal))
+	//_, err := db.Exec("delete from " + tablename + createCondStr(formCondVal, columnCondVal))
+	//checkErr(err)
+	fmt.Println(createCondStr(formCondVal, columnCondVal))
+	stmt, err := db.Exec("delete from " + tablename + createCondStr(formCondVal, columnCondVal))
 	checkErr(err)
+
+	affect, err := stmt.RowsAffected()
+	checkErr(err)
+	if affect > 0 {
+		return string(affect) + " records deleted"
+	} else {
+		return "Record not exists"
+	}
+
+	//	return string(affect)
 
 	//fmt.Println(affect)
 
@@ -427,7 +567,9 @@ func createCondStr(formCondVal []string, columnCondVal []string) string {
 func GetDB() *sql.DB {
 	var err error
 	if db == nil {
-		db, err = sql.Open("mysql", "root:@/company_policy?charset=utf8")
+		db, err = sql.Open("mysql", "root:@/company_policy?parseTime=true&charset=utf8")
+		//db, err = sql.Open("mysql", "sriram:sriram123@tcp(127.0.0.1:3306)/hotnix_dev?charset=utf8")
+
 		checkErr(err)
 	}
 

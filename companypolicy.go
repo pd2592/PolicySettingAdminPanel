@@ -1,12 +1,16 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -14,84 +18,328 @@ import (
 func main() {
 	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/citycategory", CityCategory)
-	router.HandleFunc("/citymapping", CityMapping)
+	//router.HandleFunc("/citymapping", CityMapping)
 	router.HandleFunc("/listCity", ListCities)
 	router.HandleFunc("/cityCatMap", CityCatMap)
 	router.HandleFunc("/citymapping/list", ListCityCatCities)
-	router.HandleFunc("/citymapping/add", AddCities)
-	router.HandleFunc("/citymapping/delete", RemoveCities)
+	//router.HandleFunc("/citymapping/add", AddCities)
+	//router.HandleFunc("/citymapping/delete", RemoveCities)
+	router.HandleFunc("/cityCatMap/edit", EditCityCatMap)
+
 	router.HandleFunc("/benefitbundle", BenefitBundle)
-	router.HandleFunc("/benefitbundle/listBenefitBundle", ListBenefitBundle)
-	router.HandleFunc("/benefitbundle/getBenefitBundle", GetBenefitBundle)
-	router.HandleFunc("/benefitbundle/listBundleRequirement", ListBundleRequirement)
+	router.HandleFunc("/listBenefitBundle", ListBenefitBundle)
+	router.HandleFunc("/getBenefitBundle", GetBenefitBundle)
+	router.HandleFunc("/listBundleRequirement", ListBundleRequirement)
+	router.HandleFunc("/benefitbundle/delete", DeleteBundle)
+
+	router.HandleFunc("/department/create", CreateDepartment)
+	router.HandleFunc("/department/edit", EditDepartment)
+	router.HandleFunc("/department/get", GetDepartment)
+	router.HandleFunc("/department/list", ListDepartment)
+	router.HandleFunc("/department/delete", DeleteDepartment)
+
+	router.HandleFunc("/designation/create", CreateDesignation)
+	router.HandleFunc("/designation/edit", EditDesignation)
+	router.HandleFunc("/designation/get", GetDesignation)
+	router.HandleFunc("/designation/list", ListDesignation)
+	router.HandleFunc("/designation/dep/list", ListDesignationByDep)
+	router.HandleFunc("/designation/delete", DeleteDesignation)
+
+	router.HandleFunc("/uploadEmp", UploadEmployees)
 
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
+
+func CreateDesignation(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+	Designation := UnmarshalDesignation(string(body))
+	if checkIfExist([]string{Designation.TravelAgencyMasterID, Designation.Department}, []string{"travelAgencyMasterId", "departmentMasterId"}, "department") && (Designation.BenefitBundleID == "" || checkIfExist([]string{Designation.TravelAgencyMasterID, Designation.BenefitBundleID}, []string{"CompanyID", "BenefitBundleID"}, "policy_benefit_bundle")) {
+		createTime := time.Now()
+		updateTime := time.Now()
+		var bundleId string
+		if Designation.BenefitBundleID == "" {
+			bundleId = "0"
+		} else {
+			bundleId = Designation.BenefitBundleID
+		}
+		Form := []string{Designation.DesignationName, Designation.DesignationCode, Designation.HierarchyID, Designation.Department, Designation.TravelAgencyMasterID, bundleId, createTime.String(), updateTime.String()}
+		Columns := []string{"designationName", "designationCode", "hierarchyId", "department", "travelAgencyMasterId", "benefitBundleId", "createdDate", "updatedDate"}
+
+		Result := serv("designationmaster", "create", "", Form, Columns, nil, nil, nil, nil)
+		if Result == "Record already exists" {
+			fmt.Fprintln(w, "Designation already exists")
+		} else if len(Result) <= 5 {
+			fmt.Fprintln(w, "Changes Saved successfully")
+
+		} else {
+			fmt.Fprintln(w, Result)
+		}
+	} else {
+		fmt.Println("Invalid Company(travelAgencyMaster)Id or Department or BundleID")
+
+	}
+}
+
+func EditDesignation(w http.ResponseWriter, r *http.Request) {
+	var Result string
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+	Designation := UnmarshalDesignation(string(body))
+
+	if checkIfExist([]string{Designation.DesignationID}, []string{"designationMasterId"}, "designationmaster") {
+		updateTime := time.Now()
+		FormVal := []string{Designation.DesignationName, Designation.DesignationCode, Designation.HierarchyID, Designation.Department, Designation.TravelAgencyMasterID, Designation.BenefitBundleID, updateTime.String(), Designation.DesignationID}
+		ColumnsVal := []string{"designationName", "designationCode", "hierarchyId", "department", "travelAgencyMasterId", "benefitBundleId", "updatedDate", "designationMasterId"}
+		FormCondVal := []string{Designation.DesignationID}
+		ColumnCondVal := []string{"designationMasterId"}
+		Result = serv("designationmaster", "edit", Designation.TravelAgencyMasterID, nil, nil, FormVal, ColumnsVal, FormCondVal, ColumnCondVal)
+		fmt.Fprintln(w, Result)
+	} else {
+		Result = "Invalid designationMasterId"
+		fmt.Println(Result)
+	}
+}
+
+func GetDesignation(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	designationID := r.FormValue("designationId")
+	//methType := r.FormValue("methodType")
+	FormCondVal := []string{designationID}
+	ColumnCondVal := []string{"designationMasterId"}
+	Result := serv("designationmaster", "list", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+	fmt.Fprintln(w, Result)
+}
+
+func ListDesignation(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	travelAgencyMasterId := r.FormValue("travelAgencyMasterId")
+	Result := serv("designationmaster", "list", travelAgencyMasterId, nil, nil, nil, nil, nil, nil)
+	fmt.Fprintln(w, Result)
+}
+
+func ListDesignationByDep(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	travelAgencyMasterId := r.FormValue("travelAgencyMasterId")
+	departmentID := r.FormValue("departmentId")
+	//methType := r.FormValue("methodType")
+	FormCondVal := []string{departmentID}
+	ColumnCondVal := []string{"department"}
+	Result := serv("designationmaster", "list", travelAgencyMasterId, nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+	fmt.Fprintln(w, Result)
+}
+
+func DeleteDesignation(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	designationID := r.FormValue("designationId")
+	//methType := r.FormValue("methodType")
+	FormCondVal := []string{designationID}
+	ColumnCondVal := []string{"designationMasterId"}
+	Result := serv("designationmaster", "delete", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+	fmt.Fprintln(w, Result)
+}
+
+func CreateDepartment(w http.ResponseWriter, r *http.Request) {
+	var Result string
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+	DepartmentVar := UnmarshalDepartment(string(body))
+
+	if checkIfExist([]string{DepartmentVar.TravelAgencyMasterID}, []string{"travelAgencyMasterId"}, "travelagencymaster") {
+		if Validate(DepartmentVar.DepartmentName) || Validate(DepartmentVar.TravelAgencyMasterID) {
+			fmt.Fprintln(w, "Department name must be filled")
+		} else {
+			Form := []string{DepartmentVar.DepartmentName, DepartmentVar.DepartmentCode, DepartmentVar.TravelAgencyMasterID}
+			Columns := []string{"departmentName", "departmentCode", "travelAgencyMasterId"}
+
+			Result = serv("department", "create", "", Form, Columns, nil, nil, nil, nil)
+			if Result == "Record already exists" {
+				fmt.Fprintln(w, "Department already exists")
+			} else if len(Result) <= 5 {
+				fmt.Fprintln(w, "Department created successfully")
+			} else {
+				fmt.Fprintln(w, Result)
+			}
+		}
+	} else {
+		fmt.Println("Invalid Company(travelAgencyMaster)Id")
+	}
+}
+
+func EditDepartment(w http.ResponseWriter, r *http.Request) {
+	var Result string
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+
+	DepartmentVar := UnmarshalDepartment(string(body))
+
+	if checkIfExist([]string{DepartmentVar.DepartmentID}, []string{"departmentMasterId"}, "department") {
+		FormVal := []string{DepartmentVar.DepartmentName, DepartmentVar.DepartmentCode, DepartmentVar.TravelAgencyMasterID, DepartmentVar.DepartmentID}
+		ColumnVal := []string{"departmentName", "departmentCode", "travelAgencyMasterId", "departmentMasterId"}
+		FormCondVal := []string{DepartmentVar.DepartmentID}
+		ColumnCondVal := []string{"departmentMasterId"}
+		Result = serv("department", "edit", DepartmentVar.TravelAgencyMasterID, nil, nil, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
+		fmt.Fprintln(w, Result)
+	} else {
+		Result = "Invalid departmentId"
+		fmt.Println(Result)
+	}
+}
+
+func GetDepartment(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	departmentId := r.FormValue("departmentId")
+	//methType := r.FormValue("methodType")
+	FormCondVal := []string{departmentId}
+	ColumnCondVal := []string{"departmentMasterId"}
+	Result := serv("department", "list", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+	fmt.Fprintln(w, Result)
+}
+
+func ListDepartment(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	travelAgencyMasterId := r.FormValue("travelAgencyMasterId")
+	Result := serv("department", "list", travelAgencyMasterId, nil, nil, nil, nil, nil, nil)
+	fmt.Fprintln(w, Result)
+}
+
+func DeleteDepartment(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	departmentID := r.FormValue("departmentId")
+	//methType := r.FormValue("methodType")
+	FormCondVal := []string{departmentID}
+	ColumnCondVal := []string{"departmentMasterId"}
+	Result := serv("department", "delete", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+	fmt.Fprintln(w, Result)
+}
+
 func ListCities(w http.ResponseWriter, r *http.Request) {
-	Result := serv("city_master", "list", "", nil, nil, nil, nil, nil, nil)
+	Result := serv("citymaster", "list", "", nil, nil, nil, nil, nil, nil)
 	fmt.Fprintln(w, Result)
 
 }
 func CityCatMap(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	checkErr(err)
-
+	var Result1 string
+	countcity := 0
 	CityCatPar := UnmarshalJsonCityCat(string(body))
-	Form := []string{CityCatPar.CityCat.Label, CityCatPar.CompanyID}
-	Columns := []string{"CityCatName", "CompanyId"}
-	Result := serv("city_category", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
-	if Result == "0" {
+
+	if Validate(CityCatPar.CityCat.Label) {
+		fmt.Fprintln(w, "City Category name must not be Empty!! ;)")
+	} else {
+		Form := []string{CityCatPar.CityCat.Label, CityCatPar.CompanyID}
+		Columns := []string{"CityCatName", "CompanyId"}
+		Result := serv("city_category", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
+		if Result != "Record already exists" {
+			for _, cities := range CityCatPar.Cities {
+
+				Form := []string{Result, cities.Value}
+				Columns := []string{"CityCatID", "CityID"}
+				Result1 = serv("city_mapping", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
+				log.Print(Result1)
+				countcity++
+			}
+			fmt.Fprintln(w, "City Category successfully created with "+strconv.Itoa(countcity)+" choosen cities")
+
+		} else {
+			fmt.Fprintln(w, "City Category Already Exists")
+		}
+	}
+}
+func EditCityCatMap(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+	res := ""
+	CityCatPar := UnmarshalJsonCityCatEdit(string(body))
+	fmt.Println(CityCatPar)
+	if Validate(CityCatPar.CityCat.Label) {
+		fmt.Fprintln(w, "City Category name must not be Empty!! ;)")
+	} else {
+		FormVal := []string{CityCatPar.CityCat.Label}
+		ColumnVal := []string{"CityCatName"}
+		FormCondVal := []string{CityCatPar.CityCat.Value, CityCatPar.CompanyID}
+		ColumnCondVal := []string{"CityCatID", "CompanyID"}
+		res = serv("city_category", "edit", CityCatPar.CompanyID, nil, nil, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
+		//fmt.Fprintln(w, Result1)
+
 		for _, cities := range CityCatPar.Cities {
 
-			Form := []string{Result, cities.Value}
+			Form := []string{CityCatPar.CityCat.Value, cities.Value}
 			Columns := []string{"CityCatID", "CityID"}
-			Result1 := serv("city_mapping", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
-			fmt.Fprintln(w, Result1)
+			FormCondVal := []string{CityCatPar.CityCat.Value}
+			ColumnCondVal := []string{"CityCatID"}
+			res = serv("city_mapping", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, FormCondVal, ColumnCondVal)
+			//fmt.Fprintln(w, Result1)
 		}
-	} else {
-		fmt.Fprintln(w, Result)
+		for _, remcities := range CityCatPar.RemCities {
+
+			//Form := []string{CityCatPar.CityCat.Value, cities.Value}
+			//Columns := []string{"CityCatID", "CityID"}
+			FormCondVal := []string{remcities.Value, CityCatPar.CityCat.Value}
+			ColumnCondVal := []string{"CityID", "CityCatID"}
+			res = serv("city_mapping", "delete", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+			//fmt.Fprintln(w, Result1)
+		}
+		if res != "" {
+			fmt.Fprintln(w, "All Changes Saved")
+		}
 	}
 }
 
-func AddCities(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-	checkErr(err)
+// func AddCities(w http.ResponseWriter, r *http.Request) {
+// 	body, err := ioutil.ReadAll(r.Body)
+// 	checkErr(err)
 
-	CityCatPar := UnmarshalJsonCityCat(string(body))
-	//Form := []string{CityCatPar.CityCat.Value, CityCatPar.CompanyID}
-	//Columns := []string{"CityCatName", "CompanyId"}
-	//Result := serv("city_category", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
+// 	CityCatPar := UnmarshalJsonCityCat(string(body))
+// 	//Form := []string{CityCatPar.CityCat.Value, CityCatPar.CompanyID}
+// 	//Columns := []string{"CityCatName", "CompanyId"}
+// 	//Result := serv("city_category", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
 
-	for _, cities := range CityCatPar.Cities {
+// 	for _, cities := range CityCatPar.Cities {
 
-		Form := []string{CityCatPar.CityCat.Value, cities.Value}
-		Columns := []string{"CityCatID", "CityID"}
-		FormCondVal := []string{CityCatPar.CityCat.Value}
-		ColumnCondVal := []string{"CityCatID"}
-		Result1 := serv("city_mapping", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, FormCondVal, ColumnCondVal)
-		fmt.Fprintln(w, Result1)
-	}
+// 		Form := []string{CityCatPar.CityCat.Value, cities.Value}
+// 		Columns := []string{"CityCatID", "CityID"}
+// 		FormCondVal := []string{CityCatPar.CityCat.Value}
+// 		ColumnCondVal := []string{"CityCatID"}
+// 		Result1 := serv("city_mapping", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, FormCondVal, ColumnCondVal)
+// 		fmt.Fprintln(w, Result1)
+// 	}
 
-}
-func RemoveCities(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-	checkErr(err)
+// }
+// func RemoveCities(w http.ResponseWriter, r *http.Request) {
+// 	body, err := ioutil.ReadAll(r.Body)
+// 	checkErr(err)
 
-	CityCatPar := UnmarshalJsonCityCat(string(body))
-	//Form := []string{CityCatPar.CityCat.Value, CityCatPar.CompanyID}
-	//Columns := []string{"CityCatName", "CompanyId"}
-	//Result := serv("city_category", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
+// 	CityCatPar := UnmarshalJsonCityCat(string(body))
+// 	//Form := []string{CityCatPar.CityCat.Value, CityCatPar.CompanyID}
+// 	//Columns := []string{"CityCatName", "CompanyId"}
+// 	//Result := serv("city_category", "create", CityCatPar.CompanyID, Form, Columns, nil, nil, nil, nil)
 
-	for _, cities := range CityCatPar.Cities {
+// 	for _, cities := range CityCatPar.Cities {
 
-		//Form := []string{CityCatPar.CityCat.Value, cities.Value}
-		//Columns := []string{"CityCatID", "CityID"}
-		FormCondVal := []string{cities.Value}
-		ColumnCondVal := []string{"CityMappingID"}
-		Result1 := serv("city_mapping", "delete", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
-		fmt.Fprintln(w, Result1)
-	}
-}
+// 		//Form := []string{CityCatPar.CityCat.Value, cities.Value}
+// 		//Columns := []string{"CityCatID", "CityID"}
+// 		FormCondVal := []string{cities.Value}
+// 		ColumnCondVal := []string{"CityMappingID"}
+// 		Result1 := serv("city_mapping", "delete", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+// 		fmt.Fprintln(w, Result1)
+// 	}
+// }
 
 func ListCityCatCities(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
@@ -132,47 +380,47 @@ func CityCategory(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, Result)
 }
 
-func CityMapping(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("City Mapping stuff inside me!!")
-	table := "city_mapping"
-	m := make(map[string]string)
+// func CityMapping(w http.ResponseWriter, r *http.Request) {
+// 	fmt.Println("City Mapping stuff inside me!!")
+// 	table := "city_mapping"
+// 	m := make(map[string]string)
 
-	m["cityCatId"] = "CityCatID" //mapping formNames to Database Column names
-	m["cityId"] = "CityID"
-	m["companyId"] = "CompanyID"
-	m["cityMappingId"] = "CityMappingID"
+// 	m["cityCatId"] = "CityCatID" //mapping formNames to Database Column names
+// 	m["cityId"] = "CityID"
+// 	m["companyId"] = "CompanyID"
+// 	m["cityMappingId"] = "CityMappingID"
 
-	err := r.ParseForm()
-	checkErr(err)
+// 	err := r.ParseForm()
+// 	checkErr(err)
 
-	companyID := r.FormValue("companyId")
-	methType := r.FormValue("methodType")
+// 	companyID := r.FormValue("companyId")
+// 	methType := r.FormValue("methodType")
 
-	Form := []string{r.FormValue("cityCatId"), r.FormValue("cityId")}
-	Columns := []string{m["cityCatId"], m["cityId"]}
-	//FormVal := []string{r.FormValue("cityCatName")}
-	//ColumnVal := []string{m["cityCatName"]}
-	FormCondVal := []string{r.FormValue("cityMappingId")}
-	ColumnCondVal := []string{m["cityMappingId"]}
+// 	Form := []string{r.FormValue("cityCatId"), r.FormValue("cityId")}
+// 	Columns := []string{m["cityCatId"], m["cityId"]}
+// 	//FormVal := []string{r.FormValue("cityCatName")}
+// 	//ColumnVal := []string{m["cityCatName"]}
+// 	FormCondVal := []string{r.FormValue("cityMappingId")}
+// 	ColumnCondVal := []string{m["cityMappingId"]}
 
-	Result := serv(table, methType, companyID, Form, Columns, nil, nil, FormCondVal, ColumnCondVal)
-	fmt.Fprintln(w, Result)
+// 	Result := serv(table, methType, companyID, Form, Columns, nil, nil, FormCondVal, ColumnCondVal)
+// 	fmt.Fprintln(w, Result)
 
-	for key, values := range r.Form { // range over map
-		if strings.Contains(key, "cityId[") {
-			for key, value := range values { // range over []string
-				fmt.Println(key, value)
-				Form := []string{r.FormValue("cityCatId"), value}
-				Columns := []string{m["cityCatId"], m["cityId"]}
-				fmt.Println(Form, "  ", Columns)
+// 	for key, values := range r.Form { // range over map
+// 		if strings.Contains(key, "cityId[") {
+// 			for key, value := range values { // range over []string
+// 				fmt.Println(key, value)
+// 				Form := []string{r.FormValue("cityCatId"), value}
+// 				Columns := []string{m["cityCatId"], m["cityId"]}
+// 				fmt.Println(Form, "  ", Columns)
 
-				Result := serv(table, methType, companyID, Form, Columns, nil, nil, nil, nil)
-				fmt.Fprintln(w, Result)
+// 				Result := serv(table, methType, companyID, Form, Columns, nil, nil, nil, nil)
+// 				fmt.Fprintln(w, Result)
 
-			}
-		}
-	}
-}
+// 			}
+// 		}
+// 	}
+// }
 
 func BenefitBundle(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Benefit stuff inside me!!")
@@ -196,15 +444,11 @@ func BenefitBundle(w http.ResponseWriter, r *http.Request) {
 	m["flexAmount"] = "FlexAmount"
 	m["starCat"] = "StarCat"
 
-	err := r.ParseForm()
-	checkErr(err)
+	//err := r.ParseForm()
+	//checkErr(err)
 
 	body, err := ioutil.ReadAll(r.Body)
 	checkErr(err)
-
-	if err != nil {
-
-	}
 	//log.Println(string(body))
 
 	PolicyBundle := UnmarshalJsonPolicyBundle(string(body))
@@ -217,138 +461,136 @@ func BenefitBundle(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("table   ", table)
 	var bundleId string
 	var Result string
-	Form := []string{PolicyBundle.BundleName, PolicyBundle.BundleCode, PolicyBundle.CompanyID}
-	Columns := []string{m["benefitBundleName"], m["benefitBundleCode"], m["companyId"]}
-	FormVal := []string{PolicyBundle.BundleName, PolicyBundle.BundleCode}
-	ColumnVal := []string{m["benefitBundleName"], m["benefitBundleCode"]}
-	FormCondVal := []string{PolicyBundle.BenefitBundleID}
-	ColumnCondVal := []string{m["benefitBundleId"]}
-	if PolicyBundle.MethType == "edit" {
-		Result = serv(table, "delete", PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
-		Result = serv(table, "create", PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
 
+	if Validate(PolicyBundle.BundleName) || Validate(PolicyBundle.BundleCode) {
+		fmt.Fprintln(w, "Policy Bundle Name/Code must not be Empty!! ;)")
 	} else {
-		Result = serv(table, PolicyBundle.MethType, PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
-	}
-	fmt.Fprintln(w, Result)
-	//bundleId = Result
-	//	time.Sleep(time.Second * 3)
-	if PolicyBundle.MethType == "list" {
-		fmt.Println(",,,,,///////////,,,,,,")
-		bundleId = PolicyBundle.BenefitBundleID
-	} else if Result != "Record already exists" {
-		bundleId = Result
-	} else {
-		bundleId = ""
-		//bundleId = getId(table, "BenefitBundleID", Form, Columns)
-		//Result = getBenefitBundleID(r.FormValue("benefitBundleCode"), companyID)
-	}
+		Form := []string{PolicyBundle.BundleName, PolicyBundle.BundleCode, PolicyBundle.CompanyID}
+		Columns := []string{m["benefitBundleName"], m["benefitBundleCode"], m["companyId"]}
+		FormVal := []string{PolicyBundle.BundleName, PolicyBundle.BundleCode}
+		ColumnVal := []string{m["benefitBundleName"], m["benefitBundleCode"]}
+		FormCondVal := []string{PolicyBundle.BenefitBundleID}
+		ColumnCondVal := []string{m["benefitBundleId"]}
+		if PolicyBundle.MethType == "edit" {
+			Result = serv(table, "delete", PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
+			Result = serv(table, "create", PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
 
-	table = "benefit_bundle_type_mapping"
-	var benefittypemappingId string
-	var Result1 string
-	var listbenefitbundlestr string
-	for i := range PolicyBundle.PolicyBundles {
-		fmt.Println(PolicyBundle.PolicyBundles[i])
-		//defer wg.Done()
-		if bundleId != "" {
-			fmt.Println("BenefitBundleID   ", bundleId)
-			Form1 := []string{bundleId, PolicyBundle.PolicyBundles[i].BenefitTypeID.Value, PolicyBundle.PolicyBundles[i].Priority}
-			Columns1 := []string{m["benefitBundleId"], m["benefitTypeId"], m["priority"]}
-			FormVal := []string{PolicyBundle.PolicyBundles[i].BenefitTypeID.Value, PolicyBundle.PolicyBundles[i].Priority}
-			ColumnVal := []string{m["benefitTypeId"], m["priority"]}
-			FormCondVal := []string{bundleId}
-			ColumnCondVal := []string{m["benefitBundleId"]}
-			if PolicyBundle.MethType == "edit" {
-				Result1 = serv(table, "create", PolicyBundle.CompanyID, Form1, Columns1, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
-			} else if PolicyBundle.MethType == "list" {
-				Result1 = getId(table, "BenefitBundleTypeMappingID", FormCondVal, ColumnCondVal)
-
-				benefittypemappingId = Result1
-			} else {
-				Result1 = serv(table, PolicyBundle.MethType, PolicyBundle.CompanyID, Form1, Columns1, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
-
-			}
-			fmt.Fprintln(w, Result1)
-			//time.Sleep(time.Second * 2)
-			if PolicyBundle.MethType != "list" {
-				if Result1 != "Record already exists" {
-					benefittypemappingId = Result1
-				} else {
-					benefittypemappingId = getId(table, "BenefitBundleTypeMappingID", Form1, Columns1)
-
-					//benefittypemappingId = Result1
-				}
-			}
 		} else {
-			benefittypemappingId = ""
-		}
-
-		for _, benefits := range PolicyBundle.PolicyBundles[i].Benefits {
-			table := "bundle_type_benefit_mapping"
-			fmt.Println(">>>>>>>>>>>>>>>>", benefittypemappingId)
-			if benefittypemappingId != "" {
-				var Result2 string
-
-				Form := []string{benefittypemappingId, benefits.Value}
-				Columns := []string{"BenefitBundleTypeMappingID", m["benefitId"]}
-				FormVal := []string{benefits.Value}
-				ColumnVal := []string{m["benefitId"]}
-				FormCondVal := []string{benefittypemappingId}
-				ColumnCondVal := []string{m["benefitBundleTypeMappingId"]}
-				fmt.Println(Form, "  ", Columns)
-				if PolicyBundle.MethType == "edit" {
-					Result2 = serv(table, "create", PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
-				} else if PolicyBundle.MethType == "list" {
-					Result2 = ""
-				} else {
-					Result2 = serv(table, PolicyBundle.MethType, PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
-
-				}
-				//	allowance_mapping(a)
-				//time.Sleep(time.Second * 1)
-				fmt.Fprintln(w, Result2)
-				//	time.Sleep(time.Second * 3)
-
-			} else {
-				fmt.Fprintln(w, "")
+			Result = serv(table, PolicyBundle.MethType, PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
+			if Result == "Record already exists" {
+				fmt.Fprintln(w, "BundleCode/BundleName already exists. Enter Unique Bundle code for each bundle!!")
 			}
-
 		}
-		for j := range PolicyBundle.PolicyBundles[i].CityCatAndAllowances {
+
+		//bundleId = Result
+		//	time.Sleep(time.Second * 3)
+		if PolicyBundle.MethType == "list" {
+			fmt.Println(",,,,,///////////,,,,,,")
+			bundleId = PolicyBundle.BenefitBundleID
+		} else if Result != "Record already exists" {
+			bundleId = Result
+		} else {
+			bundleId = ""
+			//bundleId = getId(table, "BenefitBundleID", Form, Columns)
+			//Result = getBenefitBundleID(r.FormValue("benefitBundleCode"), companyID)
+		}
+
+		table = "benefit_bundle_type_mapping"
+		var benefittypemappingId string
+		var Result1 string
+		listbenefitbundlestr := ""
+		for i := range PolicyBundle.PolicyBundles {
+			fmt.Println(PolicyBundle.PolicyBundles[i])
 			//defer wg.Done()
+			if bundleId != "" {
+				fmt.Println("BenefitBundleID   ", bundleId)
+				Form1 := []string{bundleId, PolicyBundle.PolicyBundles[i].BenefitTypeID.Value, PolicyBundle.PolicyBundles[i].Priority}
+				Columns1 := []string{m["benefitBundleId"], m["benefitTypeId"], m["priority"]}
+				FormVal := []string{PolicyBundle.PolicyBundles[i].BenefitTypeID.Value, PolicyBundle.PolicyBundles[i].Priority}
+				ColumnVal := []string{m["benefitTypeId"], m["priority"]}
+				FormCondVal := []string{bundleId}
+				ColumnCondVal := []string{m["benefitBundleId"]}
+				Result1 = serv(table, "create", PolicyBundle.CompanyID, Form1, Columns1, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
 
-			table := "benefit_type_allowance_mapping"
-			fmt.Println(benefittypemappingId)
-			if benefittypemappingId != "" {
-				var Result3 string
+				fmt.Println("benefittypemappingId ", Result1)
+				benefittypemappingId = Result1
 
-				Form1 := []string{benefittypemappingId, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Value, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].LimitSpent, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Max, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Min, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Flex, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].FlexAmt, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].StarCat}
-				Columns1 := []string{"BenefitBundleTypeMappingID", m["cityCatId"], m["limitSpend"], m["maxAmount"], m["minAmount"], m["flexibility"], m["flexAmount"], m["starCat"]}
-				FormCondVal := []string{benefittypemappingId}
-				ColumnCondVal := []string{m["benefitBundleTypeMappingId"]}
-				if PolicyBundle.MethType == "edit" {
-					Result3 = serv(table, "create", PolicyBundle.CompanyID, Form1, Columns1, nil, nil, nil, nil)
-				} else if PolicyBundle.MethType == "list" {
-					Result3 = ""
-				} else {
-					Result3 = serv(table, PolicyBundle.MethType, PolicyBundle.CompanyID, Form1, Columns1, nil, nil, FormCondVal, ColumnCondVal)
+				//time.Sleep(time.Second * 2)
+				// if PolicyBundle.MethType != "list" {
+				// 	if Result1 != "Record already exists" {
+				// 		benefittypemappingId = Result1
+				// 	} else {
+				// 		benefittypemappingId = getId(table, "BenefitBundleTypeMappingID", Form1, Columns1)
 
-				}
-				//fmt.Println(values)
-				//}
-
-				//time.Sleep(time.Second * 1)
-				fmt.Fprintln(w, Result3)
-				//	time.Sleep(time.Second * 3)
-
+				// 		//benefittypemappingId = Result1
+				// 	}
+				// }
 			} else {
-				fmt.Fprintln(w, "")
+				benefittypemappingId = ""
 			}
 
+			for _, benefits := range PolicyBundle.PolicyBundles[i].Benefits {
+				table := "bundle_type_benefit_mapping"
+				//	fmt.Println(">>>>>>>>>>>>>>>>", benefittypemappingId)
+				if benefittypemappingId != "" {
+					var Result2 string
+
+					Form := []string{benefittypemappingId, benefits.Value}
+					Columns := []string{"BenefitBundleTypeMappingID", m["benefitId"]}
+					FormVal := []string{benefits.Value}
+					ColumnVal := []string{m["benefitId"]}
+					FormCondVal := []string{benefittypemappingId}
+					ColumnCondVal := []string{m["benefitBundleTypeMappingId"]}
+					fmt.Println(Form, "  ", Columns)
+
+					Result2 = serv(table, "create", PolicyBundle.CompanyID, Form, Columns, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
+
+					//	allowance_mapping(a)
+					//time.Sleep(time.Second * 1)
+					fmt.Println(Result2)
+					//	time.Sleep(time.Second * 3)
+
+				} else {
+					fmt.Println("")
+				}
+
+			}
+			for j := range PolicyBundle.PolicyBundles[i].CityCatAndAllowances {
+				//defer wg.Done()
+
+				table := "benefit_type_allowance_mapping"
+				fmt.Println(benefittypemappingId)
+				if benefittypemappingId != "" && checkIfExist([]string{PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Value, PolicyBundle.CompanyID}, []string{m["cityCatId"], m["companyId"]}, "city_category") {
+					var Result3 string
+
+					Form1 := []string{benefittypemappingId, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Value, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].LimitSpent, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Max, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Min, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].Flex, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].FlexAmt, PolicyBundle.PolicyBundles[i].CityCatAndAllowances[j].StarCat}
+					Columns1 := []string{"BenefitBundleTypeMappingID", m["cityCatId"], m["limitSpend"], m["maxAmount"], m["minAmount"], m["flexibility"], m["flexAmount"], m["starCat"]}
+					FormCondVal := []string{benefittypemappingId}
+					ColumnCondVal := []string{m["benefitBundleTypeMappingId"]}
+					if PolicyBundle.MethType == "edit" {
+						Result3 = serv(table, "create", PolicyBundle.CompanyID, Form1, Columns1, nil, nil, nil, nil)
+						listbenefitbundlestr = Result3
+					} else {
+						Result3 = serv(table, PolicyBundle.MethType, PolicyBundle.CompanyID, Form1, Columns1, nil, nil, FormCondVal, ColumnCondVal)
+						listbenefitbundlestr = Result3
+					}
+					//fmt.Println(values)
+					//}
+
+					//time.Sleep(time.Second * 1)
+					fmt.Println(Result3)
+					//	time.Sleep(time.Second * 3)
+
+				} else {
+					fmt.Fprintln(w, "")
+				}
+
+			}
+		}
+		if listbenefitbundlestr != "" {
+			fmt.Fprintln(w, "Policy Bundle Saved Successfully")
 		}
 	}
-	fmt.Fprintln(w, listbenefitbundlestr)
 }
 
 func ListBenefitBundle(w http.ResponseWriter, r *http.Request) {
@@ -372,24 +614,163 @@ func ListBundleRequirement(w http.ResponseWriter, r *http.Request) {
 	//FormCondVal := []string{companyId}
 	//ColumnCondVal := []string{"CompanyID"}
 	Result := serv("benefit_type_master", "list", companyId, nil, nil, nil, nil, nil, nil)
-	fmt.Println(Result)
+	fmt.Fprintln(w, Result)
 }
 func GetBenefitBundle(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Inside me request edit policy bundle")
+	fmt.Println("Inside me request get policy bundle")
 	err := r.ParseForm()
 	checkErr(err)
 	benefitBundleId := r.FormValue("benefitBundleId")
 	FormCondVal := []string{benefitBundleId}
-	ColumnCondVal := []string{"BenefitBundleId"}
+	ColumnCondVal := []string{"BenefitBundleID"}
 	Result := serv("policy_benefit_bundle", "list", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
-	fmt.Println(Result)
+	fmt.Fprintln(w, Result)
 }
 
+func DeleteBundle(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Inside me delete policy bundle")
+	err := r.ParseForm()
+	checkErr(err)
+	benefitBundleId := r.FormValue("benefitBundleId")
+
+	FormCondVal := []string{benefitBundleId}
+	ColumnCondVal := []string{"BenefitBundleID"}
+	Result := serv("policy_benefit_bundle", "delete", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+	fmt.Fprintln(w, Result)
+}
+
+func UploadEmployees(w http.ResponseWriter, r *http.Request) {
+
+	file, err := os.Open("F:\\HOBSE\\emp.csv")
+	var Result, Result1 string
+	checkErr(err)
+	// automatically call Close() at the end of current method
+	defer file.Close()
+	//
+	reader := csv.NewReader(file)
+	lines, err := reader.ReadAll()
+	checkErr(err)
+
+	reader.Comma = ','
+	lineCount := 0
+	totalrecords := 0
+	for i, record := range lines {
+		totalrecords++
+		// read just one record, but we could ReadAll() as well
+		if i == 0 {
+			// skip header line
+			continue
+		}
+		//	record, err := line.Read()
+		// end-of-file is fitted into err
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+
+		if record[4] == "" && record[3] == "" {
+			fmt.Println("profile cant be created")
+			failText := "profile cant be created"
+			Form := []string{"3", record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], failText}
+			Columns := []string{"travelAgencyMasterId", "travelAgencyNameTemp", "virtualName", "designation", "personalEmail", "companyEmail", "phone", "mobile", "startDate", "failReason"}
+			go serv("travelagencyuserfail_log", "create", "3", Form, Columns, nil, nil, nil, nil)
+
+		} else if record[4] == "" {
+			Form := []string{record[3], record[5], record[6]}
+			Columns := []string{"email", "phone", "mobile"}
+			Result = serv("memberprofile", "create", "3", Form, Columns, nil, nil, nil, nil)
+		} else {
+		}
+
+		if checkIfExist([]string{"3", record[4]}, []string{"travelAgencyMasterId", "email"}, "travelagencyusers") || checkIfExist([]string{"3", record[3]}, []string{"travelAgencyMasterId", "personalEmail"}, "travelagencyusers") {
+			fmt.Println("Record Exists")
+			Result = getId("travelagencyusers", "travelAgencyUsersId", []string{"3", record[4]}, []string{"travelAgencyMasterId", "email"})
+			fmt.Println("travelAgencyUserId", Result, record[4])
+		} else {
+			// record is an array of string so is directly printable
+			fmt.Println("Record", lineCount, "is", record, "and has", len(record), "fields")
+			// and we can iterate on top of that
+			//for i := 0; i < len(record); i++ {
+			fmt.Println(" >>>", record[0]+record[1]+record[2]+record[3])
+			if record[4] == "" || ExtensionCheck(record[4], "3") {
+				Form := []string{"3", record[0], record[1], record[2], record[3], record[4], record[5], record[6]}
+				Columns := []string{"travelAgencyMasterId", "travelAgencyNameTemp", "virtualName", "designation", "personalEmail", "email", "phone", "mobile"}
+				Result = serv("travelagencyusers", "create", "3", Form, Columns, nil, nil, nil, nil)
+				lineCount += 1
+
+			} else {
+				failText := "Email extension is not correct"
+				Form := []string{"3", record[0], record[1], record[2], record[3], record[4], record[5], record[6], record[7], failText}
+				Columns := []string{"travelAgencyMasterId", "travelAgencyNameTemp", "virtualName", "designation", "personalEmail", "companyEmail", "phone", "mobile", "startDate", "failReason"}
+				go serv("travelagencyuserfail_log", "create", "3", Form, Columns, nil, nil, nil, nil)
+			}
+
+		}
+
+		if checkIfExist([]string{"3", Result}, []string{"travelAgencyMasterId", "travelAgencyUserId"}, "user_employment_track") {
+			fmt.Println("Record Exists in user_employment_track")
+			Result1 = getId("user_employment_track", "trackMasterId", []string{"3", Result}, []string{"travelAgencyMasterId", "travelAgencyUserId"})
+			fmt.Println("trackMasterId", Result, record[4])
+		} else {
+			t, err := time.Parse("1/2/2006", record[7])
+			checkErr(err)
+			Form1 := []string{Result, "3", "s1", t.String(), "1"}
+			Columns1 := []string{"travelAgencyUsersId", "travelAgencyMasterId", "travelAgencyName", "desgStartDate", "active"}
+			Result1 = serv("user_employment_track", "create", "3", Form1, Columns1, nil, nil, nil, nil)
+		}
+		var memberProfileID string
+
+		if checkIfExist([]string{record[3]}, []string{"email"}, "memberprofile") {
+			memberProfileID = getId("memberprofile", "memberProfileId", []string{record[3]}, []string{"email"})
+			FormVal := []string{memberProfileID}
+			ColumnsVal := []string{"memberProfileId"}
+			FormCondVal := []string{Result}
+			ColumnCondVal := []string{"travelAgencyUsersId"}
+			FormCondVal1 := []string{Result1}
+			ColumnCondVal1 := []string{"trackMasterId"}
+			go serv("travelagencyusers", "edit", "3", nil, nil, FormVal, ColumnsVal, FormCondVal, ColumnCondVal)
+			go serv("user_employment_track", "edit", "3", nil, nil, FormVal, ColumnsVal, FormCondVal1, ColumnCondVal1)
+
+			//go UpdateMemberPro()
+		} else {
+			fmt.Println("send mail to " + record[4] + " id to sign up with hobse using personal details")
+		}
+		//}
+		//fmt.Fprintln(w, Result)
+	}
+	fmt.Fprintln(w, lineCount, " record inserted out of ", totalrecords-1)
+
+}
+func ExtensionCheck(str, travelAgencyMasterId string) bool {
+	emailExtension := getId("travelagencymaster", "officialemailExtension", []string{travelAgencyMasterId}, []string{"travelAgencyMasterId"})
+	if strings.Contains(str, emailExtension) {
+		return true
+	} else {
+		return false
+	}
+}
+func Validate(str string) bool {
+	if str == "" {
+		return true
+	} else {
+		return false
+	}
+}
+
+func checkIfExist(value []string, column []string, table string) bool {
+	if QueryRow(value, column, table) != 0 {
+		return true
+	} else {
+		return false
+	}
+}
 func checkErr(err error) {
 
 	if err != nil {
 		fmt.Println(err)
-		log.Fatal(err)
-		os.Exit(1)
+		//log.Fatal(err)
+		//os.Exit(1)
 	}
 }
