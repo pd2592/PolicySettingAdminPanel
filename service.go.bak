@@ -122,7 +122,6 @@ func serv(table string, methType string, companyID string, Form []string, Column
 				result = "false"
 			} else {
 				result = DeleteById(table, FormCondVal, ColumnCondVal)
-				result = "true"
 			}
 		}
 	}

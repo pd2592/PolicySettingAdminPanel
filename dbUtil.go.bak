@@ -603,8 +603,8 @@ func createCondStr(formCondVal []string, columnCondVal []string) string {
 func GetDB() *sql.DB {
 	var err error
 	if db == nil {
-		//db, err = sql.Open("mysql", "root:@/company_policy?parseTime=true&charset=utf8")
-		db, err = sql.Open("mysql", "sriram:sriram123@tcp(127.0.0.1:3306)/hotnix_dev?charset=utf8")
+		db, err = sql.Open("mysql", "root:@/company_policy?parseTime=true&charset=utf8")
+		//db, err = sql.Open("mysql", "sriram:sriram123@tcp(127.0.0.1:3306)/hotnix_dev?charset=utf8")
 
 		checkErr(err)
 	}

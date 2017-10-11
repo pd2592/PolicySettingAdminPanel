@@ -26,7 +26,7 @@ type PolicyBundle struct {
 type CityCatAndAllowance struct {
 	Label      string `json:"label,omitempty"`
 	Value      string `json:"value,omitempty"`
-	LimitSpent string `json:"limitSpent,omitempty"`
+	LimitSpent string   `json:"limitSpent,omitempty"`
 	Min        string `json:"min,omitempty"`
 	Max        string `json:"max,omitempty"`
 	Flex       string `json:"flex,omitempty"`
@@ -70,6 +70,19 @@ type Designation struct {
 	// UpdateDate           time.Time
 }
 
+type AssignDesignations struct {
+	DesignationName LabVal
+	EmpDetails      []EmpDetail
+}
+type EmpDetail struct {
+	TravelAgencyUserId string `json:"travelAgencyUserId,omitempty"`
+	VirtualName        string `json:"virtualName,omitempty"`
+	Email              string `json:"email,omitempty"`
+	PersonalEmail      string `json:"personalEmail,omitempty"`
+	Phone              string `json:"phone,omitempty"`
+	Designation        string `json:"designation,omitempty"`
+}
+
 type mapStringScan struct {
 	// cp are the column pointers
 	cp []interface{}
@@ -77,6 +90,14 @@ type mapStringScan struct {
 	row      map[string]string
 	colCount int
 	colNames []string
+}
+
+func UnmarshalAssignDesignation(jsonStr string) *AssignDesignations {
+	res := &AssignDesignations{}
+	err := json.Unmarshal([]byte(jsonStr), res)
+	checkErr(err)
+	//fmt.Println(res)
+	return res
 }
 
 func UnmarshalDesignation(jsonStr string) *Designation {

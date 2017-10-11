@@ -49,7 +49,7 @@ func main() {
 	router.HandleFunc("/uploadEmp", UploadEmployees)
 	router.HandleFunc("/empassign/list", ListUnassignedEmp)
 
-	log.Fatal(http.ListenAndServe(":8800", router))
+	log.Fatal(http.ListenAndServe(":8080", router))
 }
 
 func CreateDesignation(w http.ResponseWriter, r *http.Request) {
