@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	gomail "gopkg.in/gomail.v2"
 
 	"github.com/gorilla/mux"
 )
@@ -44,12 +47,20 @@ func main() {
 	router.HandleFunc("/designation/list", ListDesignation)
 	router.HandleFunc("/designation/dep/list", ListDesignationByDep)
 	router.HandleFunc("/designation/delete", DeleteDesignation)
+	router.HandleFunc("/bundle/des", BenefitBundleByDes)
 
 	router.HandleFunc("/designation/assign", AssignDesignation)
 	router.HandleFunc("/uploadEmp", UploadEmployees)
 	router.HandleFunc("/empassign/list", ListUnassignedEmp)
+	router.HandleFunc("/emp/add", AddEmployee)
+	router.HandleFunc("/emp/get", GetEmployee)
+	router.HandleFunc("/emp/all", ListAllEmp)
+	router.HandleFunc("/emp/edit", EditEmployee)
 
-	log.Fatal(http.ListenAndServe(":8800", router))
+	router.HandleFunc("/emp/deact", DeactivateEmployee)
+	router.HandleFunc("/emp/search", SearchByName)
+
+	log.Fatal(http.ListenAndServe(":8080", router))
 }
 
 func CreateDesignation(w http.ResponseWriter, r *http.Request) {
@@ -645,9 +656,146 @@ func DeleteBundle(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, Result)
 }
 
-func UploadEmployees(w http.ResponseWriter, r *http.Request) {
+func GetEmployee(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Employee Editing .....")
+	err := r.ParseForm()
+	checkErr(err)
+	travelAgencyUsersId := r.FormValue("travelAgencyUserId")
 
-	file, err := os.Open("F:\\HOBSE\\emp.csv")
+	Result := GetEmployeedetails("travelAgencyUsers", travelAgencyUsersId)
+	fmt.Fprintln(w, Result)
+}
+func EditEmployee(w http.ResponseWriter, r *http.Request) {
+	var MemberProfileId string
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+	//log.Println(string(body))
+
+	EmployeeDet := UnmarshalAddEmployee(string(body))
+
+	TravelagencyusersId := EmployeeDet.TravelAgencyUserId
+	designationText := getId("designationamaster", "designationName", []string{EmployeeDet.Designation}, []string{"designationMasterId"})
+	FormVal := []string{EmployeeDet.CompanyID, MemberProfileId, EmployeeDet.CompanyName, EmployeeDet.CompanyMail, EmployeeDet.PersonalMail, designationText, EmployeeDet.Designation, EmployeeDet.EmployeeName, EmployeeDet.MobileNo}
+	ColumnVal := []string{"travelAgencyMasterId", "memberProfileId", "travelAgencyNameTemp", "email", "personalEmail", "designation", "designationId", "virtualName", "mobile"}
+	FormCondVal := []string{TravelagencyusersId}
+	ColumnCondVal := []string{"travelagencyusersId"}
+	Result := serv("travelagencyusers", "edit", EmployeeDet.CompanyID, nil, nil, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
+	fmt.Println(Result)
+	maxdate := getId("user_employment_track", "desgStartDate", []string{"3", TravelagencyusersId}, []string{"travelAgencyMasterId", "travelAgencyUsersId"})
+
+	t, err := time.Parse("2006-01-02T00:00:00Z", maxdate)
+
+	trackId := getId("user_employment_track", "trackMasterId", []string{"3", TravelagencyusersId, t.String()}, []string{"travelAgencyMasterId", "travelAgencyUsersId", "desgStartDate"})
+	fmt.Println(trackId)
+
+	//Result1 := getId("user_employment_track", "trackMasterId", []string{"3", Result}, []string{"travelAgencyMasterId", "travelAgencyUserId"})
+
+	t, err = time.Parse("02 Jan 2006", EmployeeDet.StartDate)
+	checkErr(err)
+	fmt.Println(TravelagencyusersId, "3", t.String(), EmployeeDet.Designation)
+	Form1 := []string{TravelagencyusersId, "3", t.String(), EmployeeDet.Designation}
+	Columns1 := []string{"travelAgencyUsersId", "travelAgencyMasterId", "desgStartDate", "designationId"}
+	FormCondVal = []string{trackId}
+	ColumnCondVal = []string{"trackMasterId"}
+	Result1 := serv("user_employment_track", "edit", "3", nil, nil, Form1, Columns1, FormCondVal, ColumnCondVal)
+	fmt.Println(Result1)
+
+	fmt.Fprintln(w, "Rows Updated")
+
+}
+
+func DeactivateEmployee(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Employee Deactivating .....")
+
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+	//log.Println(string(body))
+	Emps := UnmarshalDeleteEmps(string(body))
+
+	for i := range Emps.TravelAgencyUserId {
+		Form1 := []string{"0"}
+		Columns1 := []string{"status"}
+		FormCondVal := []string{Emps.TravelAgencyUserId[i]}
+		ColumnCondVal := []string{"travelAgencyUsersId"}
+		Result1 := serv("travelagencyusers", "edit", "", nil, nil, Form1, Columns1, FormCondVal, ColumnCondVal)
+		fmt.Fprintln(w, Result1)
+
+	}
+}
+
+func AddEmployee(w http.ResponseWriter, r *http.Request) {
+	var MemberProfileId string
+	body, err := ioutil.ReadAll(r.Body)
+	checkErr(err)
+	//log.Println(string(body))
+	pass := RandomPass()
+	EmployeeDet := UnmarshalAddEmployee(string(body))
+	//fmt.Println(PolicyBundle)
+	fmt.Println(EmployeeDet)
+
+	if checkIfExist([]string{EmployeeDet.PersonalMail}, []string{"email"}, "memberprofile") {
+		fmt.Println("Record exist inside member profile")
+		MemberProfileId = getId("memberprofile", "memberProfileId", []string{EmployeeDet.PersonalMail}, []string{"email"})
+
+	} else {
+		Form := []string{EmployeeDet.PersonalMail, "", EmployeeDet.MobileNo, pass}
+		Columns := []string{"email", "phone", "mobile", "password"}
+		MemberProfileId = serv("memberprofile", "create", "3", Form, Columns, nil, nil, nil, nil)
+		//MemberProfileId = "0"
+	}
+	Form := []string{EmployeeDet.CompanyMail}
+	Column := []string{"email"}
+	var Result string
+	if !checkIfExist(Form, Column, "travelagencyusers") {
+		Form := []string{EmployeeDet.CompanyID, MemberProfileId, EmployeeDet.CompanyName, EmployeeDet.CompanyMail, EmployeeDet.PersonalMail, EmployeeDet.Designation, EmployeeDet.EmployeeName, EmployeeDet.MobileNo, pass, EmployeeDet.BenefitBundleId}
+		Columns := []string{"travelAgencyMasterId", "memberProfileId", "travelAgencyNameTemp", "email", "personalEmail", "designationId", "virtualName", "mobile", "password", "benefitBundleId"}
+
+		Result = serv("travelagencyusers", "create", EmployeeDet.CompanyID, Form, Columns, nil, nil, nil, nil)
+		sendMail(EmployeeDet.CompanyMail, pass, EmployeeDet.CompanyMail)
+	} else {
+		TravelagencyusersId := getId("travelagencyusers", "travelagencyusersId", []string{EmployeeDet.CompanyMail}, []string{"email"})
+		FormVal := []string{EmployeeDet.CompanyID, MemberProfileId, EmployeeDet.CompanyName, EmployeeDet.CompanyMail, EmployeeDet.PersonalMail, EmployeeDet.Designation, EmployeeDet.EmployeeName, EmployeeDet.MobileNo, EmployeeDet.BenefitBundleId}
+		ColumnVal := []string{"travelAgencyMasterId", "memberProfileId", "travelAgencyNameTemp", "email", "personalEmail", "designationId", "virtualName", "mobile", "benefitBundleId"}
+		FormCondVal := []string{TravelagencyusersId}
+		ColumnCondVal := []string{"travelagencyusersId"}
+		serv("travelagencyusers", "edit", EmployeeDet.CompanyID, nil, nil, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
+		Result = TravelagencyusersId
+
+	}
+	var Result1 string
+	fmt.Println(EmployeeDet.CompanyID, Result, EmployeeDet.Designation)
+	if !checkIfExist([]string{EmployeeDet.CompanyID, Result, EmployeeDet.Designation}, []string{"travelAgencyMasterId", "travelAgencyUsersId", "designationId"}, "user_employment_track") {
+		t, err := time.Parse("02 Jan 2006", EmployeeDet.StartDate)
+		checkErr(err)
+		Form1 := []string{Result, "3", MemberProfileId, "s1", t.String(), "1", EmployeeDet.Designation}
+		Columns1 := []string{"travelAgencyUsersId", "travelAgencyMasterId", "memberProfileId", "travelAgencyName", "desgStartDate", "active", "designationId"}
+		Result1 = serv("user_employment_track", "create", "3", Form1, Columns1, nil, nil, nil, nil)
+		fmt.Fprintln(w, "Rows Updated")
+
+	} else {
+
+		fmt.Println("Record Exists in user_employment_track")
+		Result1 = getId("user_employment_track", "trackMasterId", []string{"3", Result}, []string{"travelAgencyMasterId", "travelAgencyUserId"})
+		fmt.Println("trackMasterId", Result)
+		fmt.Fprintln(w, "Record Exists")
+
+	}
+	fmt.Println(Result1)
+}
+
+func UploadEmployees(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Inside Upload emp")
+
+	err := r.ParseForm()
+	checkErr(err)
+	EmpCsvUrl := r.FormValue("importCsv")
+	fmt.Println("importCsv : ", EmpCsvUrl)
+
+	file, err := os.Open(EmpCsvUrl)
+
+	//C:\HostingSpaces\admin\amazingnature.in\wwwroot\hobse\demo\uploads\emp.csv
+
+	//file, err := os.Open("C:\\HostingSpaces\\admin\\amazingnature.in\\wwwroot\\hobse\\demo\\uploads\\emp.csv")
 	checkErr(err)
 	// automatically call Close() at the end of current method
 	defer file.Close()
@@ -676,6 +824,7 @@ func UploadEmployees(w http.ResponseWriter, r *http.Request) {
 			fmt.Println("Error:", err)
 			return
 		}
+		pass := RandomPass()
 
 		Form := []string{"3", record[0], record[1], record[2], record[3], record[4], record[5], record[6]}
 		Column := []string{"travelAgencyMasterId", "travelAgencyNameTemp", "virtualName", "designation", "personalEmail", "email", "phone", "mobile"}
@@ -690,8 +839,8 @@ func UploadEmployees(w http.ResponseWriter, r *http.Request) {
 
 			} else if record[3] != "" && !checkIfExist([]string{record[3]}, []string{"email"}, "memberprofile") {
 				fmt.Println("If not exist in memberprofile")
-				Form := []string{record[3], record[5], record[6]}
-				Columns := []string{"email", "phone", "mobile"}
+				Form := []string{record[3], record[5], record[6], pass}
+				Columns := []string{"email", "phone", "mobile", "password"}
 				Result = serv("memberprofile", "create", "3", Form, Columns, nil, nil, nil, nil)
 			} else if checkIfExist([]string{record[3]}, []string{"email"}, "memberprofile") {
 				fmt.Println("Record exist inside member profile")
@@ -713,8 +862,8 @@ func UploadEmployees(w http.ResponseWriter, r *http.Request) {
 					fmt.Println(" >>>", record[0]+record[1]+record[2]+record[3])
 					if record[4] == "" || ExtensionCheck(record[4], "3") {
 						fmt.Println("extension exists")
-						Form := []string{"3", record[0], record[1], record[2], record[3], record[4], record[5], record[6]}
-						Columns := []string{"travelAgencyMasterId", "travelAgencyNameTemp", "virtualName", "designation", "personalEmail", "email", "phone", "mobile"}
+						Form := []string{"3", record[0], record[1], record[2], record[3], record[4], record[5], record[6], pass}
+						Columns := []string{"travelAgencyMasterId", "travelAgencyNameTemp", "virtualName", "designation", "personalEmail", "email", "phone", "mobile", "password"}
 						Result = serv("travelagencyusers", "create", "3", Form, Columns, nil, nil, nil, nil)
 						lineCount += 1
 
@@ -756,7 +905,8 @@ func UploadEmployees(w http.ResponseWriter, r *http.Request) {
 
 						//go UpdateMemberPro()
 					} else {
-						fmt.Println("send mail to " + record[4] + " id to sign up with hobse using personal details")
+						sendMail(record[4], pass, record[4])
+						fmt.Println("sending mail to " + record[4] + " id to sign up with hobse using personal details")
 					}
 				}
 			}
@@ -774,23 +924,62 @@ func AssignDesignation(w http.ResponseWriter, r *http.Request) {
 	checkErr(err)
 	//log.Println(string(body))
 
-	AssignDesignation := UnmarshalAssignDesignation(string(body))
+	AssignDesignation := UnmarshalAssignDesig(string(body))
 	//fmt.Println(PolicyBundle)
 	fmt.Println(AssignDesignation)
 
 	benefitBundleId := getId("designationmaster", "benefitBundleId", []string{AssignDesignation.DesignationName.Value}, []string{"designationMasterId"})
 	hierarchyId := getId("designationmaster", "hierarchyId", []string{AssignDesignation.DesignationName.Value}, []string{"designationMasterId"})
 
-	for i := range AssignDesignation.EmpDetails {
-		FormVal := []string{AssignDesignation.DesignationName.Value, benefitBundleId, hierarchyId}
-		ColumnVal := []string{"designationId", "benefitBundleId", "hierarchyId"}
-		FormCondVal := []string{AssignDesignation.EmpDetails[i].TravelAgencyUserId}
+	for i := range AssignDesignation.TravelAgencyUserId {
+		fmt.Println(AssignDesignation.DesignationName.Label, AssignDesignation.DesignationName.Value)
+		FormVal := []string{AssignDesignation.DesignationName.Label, AssignDesignation.DesignationName.Value, benefitBundleId, hierarchyId}
+		ColumnVal := []string{"designation", "designationId", "benefitBundleId", "hierarchyId"}
+		FormCondVal := []string{AssignDesignation.TravelAgencyUserId[i]}
 		ColumnCondVal := []string{"travelAgencyUsersId"}
 		Result := serv("travelagencyusers", "edit", "", nil, nil, FormVal, ColumnVal, FormCondVal, ColumnCondVal)
 		fmt.Println(Result)
 
 	}
 	//	fmt.Println(Result)
+}
+
+func BenefitBundleByDes(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	checkErr(err)
+
+	designationId := r.FormValue("designationId")
+	//methType := r.FormValue("methodType")
+	FormCondVal := []string{designationId}
+	ColumnCondVal := []string{"designationMasterId"}
+	bundleId := getId("designationmaster", "benefitBundleId", FormCondVal, ColumnCondVal)
+	bundleName := getId("policy_benefit_bundle", "BenefitBundleName", []string{bundleId}, []string{"BenefitBundleID"})
+	hierarchyId := getId("designationmaster", "hierarchyId", FormCondVal, ColumnCondVal)
+	Res := MarshalBenefitByDes(bundleId, bundleName, hierarchyId)
+
+	fmt.Fprintln(w, Res)
+}
+
+func SearchByName(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Get list of all assigned emps")
+	err := r.ParseForm()
+	checkErr(err)
+	travelAgencyMasterId := r.FormValue("travelAgencyMasterId")
+	travelAgencyUserName := r.FormValue("searchText")
+
+	res := SeachAllEmp("travelagencyusers", travelAgencyMasterId, travelAgencyUserName)
+	fmt.Fprintln(w, res)
+}
+
+func ListAllEmp(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Get list of all unassigned emps")
+	err := r.ParseForm()
+	checkErr(err)
+	travelAgencyMasterId := r.FormValue("travelAgencyMasterId")
+	FormCondVal := []string{travelAgencyMasterId}
+	ColumnCondVal := []string{"travelAgencyMasterId"}
+	Result := serv("travelagencyusers", "list", "", nil, nil, nil, nil, FormCondVal, ColumnCondVal)
+	fmt.Fprintln(w, Result)
 }
 
 func ListUnassignedEmp(w http.ResponseWriter, r *http.Request) {
@@ -834,4 +1023,31 @@ func checkErr(err error) {
 		//log.Fatal(err)
 		//os.Exit(1)
 	}
+}
+
+func RandomPass() string {
+	n := 5
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		fmt.Println("Cant generate pass")
+	}
+	s := fmt.Sprintf("%X", b)
+	return s
+}
+
+func sendMail(to, username, password string) {
+	from := "priyanka@infonixweblab.com"
+	subject := "SignIn with Hobse"
+	To := to
+	text := "Please sign in with hobse using this credentials. Username : " + username + ", Password : " + password
+	m := gomail.NewMessage()
+	m.SetHeader("From", from)
+	m.SetHeader("To", To)
+	m.SetHeader("subject", subject)
+	m.SetBody("text/html", text)
+	d := gomail.NewDialer("smtp.zoho.com", 587, from, "priyanka123")
+	if err := d.DialAndSend(m); err != nil {
+		panic(err)
+	}
+	fmt.Println("mail sent")
 }

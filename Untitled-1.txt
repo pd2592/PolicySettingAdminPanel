@@ -26,7 +26,7 @@ type PolicyBundle struct {
 type CityCatAndAllowance struct {
 	Label      string `json:"label,omitempty"`
 	Value      string `json:"value,omitempty"`
-	LimitSpent string `json:"limitSpent,omitempty"`
+	LimitSpent string   `json:"limitSpent,omitempty"`
 	Min        string `json:"min,omitempty"`
 	Max        string `json:"max,omitempty"`
 	Flex       string `json:"flex,omitempty"`
@@ -88,40 +88,27 @@ type EmpDetail struct {
 	Designation        string `json:"designation,omitempty"`
 }
 
-//editted
 type AllEmp struct {
 	TravelAgencyUserId string `json:"travelAgencyUserId,omitempty"`
 	VirtualName        string `json:"virtualName,omitempty"`
 	Email              string `json:"email,omitempty"`
 	PersonalEmail      string `json:"personalEmail,omitempty"`
 	Phone              string `json:"phone,omitempty"`
-	Department         LabVal `json:"department,omitempty"`
 	Designation        LabVal `json:"designation,omitempty"`
 	BenefitBundle      LabVal `json:"benefitBundle,omitempty"`
-}
-
-type Bundle struct {
-	BenefitBundle LabVal `json:"benefitBundle"`
-	HierarchyId   string `json:"hierarchyId"`
-}
-
-type DeleteEmps struct {
-	TravelAgencyUserId []string `json:"travelAgencyUserId"`
 }
 
 type EditEmploye struct {
 	TravelAgencyUserId string `json:"travelAgencyUserId,omitempty"`
-	CompanyName        string `json:"companyName,omitempty"`
 	VirtualName        string `json:"virtualName,omitempty"`
 	Email              string `json:"email,omitempty"`
 	PersonalEmail      string `json:"personalEmail,omitempty"`
 	HierarchyId        string `json:"hierarchyId,omitempty"`
-	Mobile             string `json:"mobile,omitempty"`
 	Phone              string `json:"phone,omitempty"`
 	Department         LabVal `json:"department,omitempty"`
 	Designation        LabVal `json:"designation,omitempty"`
 	BenefitBundle      LabVal `json:"benefitBundle,omitempty"`
-}
+
 
 type mapStringScan struct {
 	// cp are the column pointers
@@ -132,35 +119,16 @@ type mapStringScan struct {
 	colNames []string
 }
 
-//editted
 type AddIndivEmployee struct {
-	CompanyID          string `json:"companyId,omitempty"`
-	TravelAgencyUserId string `json:"travelAgencyUserId,omitempty"`
-	CompanyMail        string `json:"companyMail,omitempty"`
-	CompanyName        string `json:"companyName,omitempty"`
-	Department         string `json:"department,omitempty"`
-	Designation        string `json:"designation,omitempty"`
-	EmployeeName       string `json:"employeeName,omitempty"`
-	MobileNo           string `json:"mobileNo,omitempty"`
-	PersonalMail       string `json:"personalMail,omitempty"`
-	StartDate          string `json:"startDate,omitempty"`
-	BenefitBundleId    string `json:"benefitBundleId,omitempty"`
-}
-
-func MarshalBenefitByDes(bundleId, bundleName, hierarchyId string) string {
-	var BundleVar Bundle
-	var labval LabVal
-	labval = LabVal{
-		Label: bundleName,
-		Value: bundleId,
-	}
-	BundleVar = Bundle{
-		BenefitBundle: labval,
-		HierarchyId:   hierarchyId,
-	}
-	b, err := json.Marshal(BundleVar)
-	checkErr(err)
-	return string(b)
+	CompanyID    string `json:"companyId,omitempty"`
+	CompanyMail  string `json:"companyMail,omitempty"`
+	CompanyName  string `json:"companyName,omitempty"`
+	Department   string `json:"department,omitempty"`
+	Designation  string `json:"designation,omitempty"`
+	EmployeeName string `json:"employeeName,omitempty"`
+	MobileNo     string `json:"mobileNo,omitempty"`
+	PersonalMail string `json:"personalMail,omitempty"`
+	StartDate    string `json:"startDate,omitempty"`
 }
 
 func UnmarshalAddEmployee(jsonStr string) *AddIndivEmployee {
@@ -171,17 +139,9 @@ func UnmarshalAddEmployee(jsonStr string) *AddIndivEmployee {
 	return res
 }
 
-// func UnmarshalAllEmp(jsonStr string) *AllEmp {
-// 	res := &AllEmp{}
-// 	err := json.Unmarshal([]byte(jsonStr), res)
-// 	checkErr(err)
-// 	//fmt.Println(res)
-// 	return res
-// }
 
-//edited
-func UnmarshalDeleteEmps(jsonStr string) *DeleteEmps {
-	res := &DeleteEmps{}
+func UnmarshalAssignDesignation(jsonStr string) *AssignDesignations {
+	res := &AssignDesignations{}
 	err := json.Unmarshal([]byte(jsonStr), res)
 	checkErr(err)
 	//fmt.Println(res)
@@ -190,14 +150,6 @@ func UnmarshalDeleteEmps(jsonStr string) *DeleteEmps {
 
 func UnmarshalAssignDesig(jsonStr string) *AssignDesig {
 	res := &AssignDesig{}
-	err := json.Unmarshal([]byte(jsonStr), res)
-	checkErr(err)
-	//fmt.Println(res)
-	return res
-}
-
-func UnmarshalAssignDesignation(jsonStr string) *AssignDesignations {
-	res := &AssignDesignations{}
 	err := json.Unmarshal([]byte(jsonStr), res)
 	checkErr(err)
 	//fmt.Println(res)

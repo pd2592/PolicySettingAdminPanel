@@ -494,6 +494,166 @@ func ListDesignations(table, companyId string) string {
 	return string(b)
 }
 
+func GetEmployeedetails(table, travelAgencyUsersId string) string {
+	db = GetDB()
+	var editEmployeeVar EditEmploye
+	var benefitbundle LabVal
+	var designation LabVal
+	var department LabVal
+	stmt, err := db.Query("select travelAgencyUsersId, travelAgencyNameTemp, virtualName, email, personalEmail, phone, mobile, designation, designationId, hierarchyId, benefitBundleId from " + table + " where travelAgencyUsersId = '" + travelAgencyUsersId + "'")
+	checkErr(err)
+	for stmt.Next() {
+		err := stmt.Scan(&editEmployeeVar.TravelAgencyUserId, &editEmployeeVar.CompanyName, &editEmployeeVar.VirtualName, &editEmployeeVar.Email, &editEmployeeVar.PersonalEmail, &editEmployeeVar.Phone, &editEmployeeVar.Mobile, &editEmployeeVar.Designation.Label, &editEmployeeVar.Designation.Value, &editEmployeeVar.HierarchyId, &editEmployeeVar.BenefitBundle.Value)
+		checkErr(err)
+	}
+
+	err = db.QueryRow("select department from designationmaster where designationMasterId = '" + editEmployeeVar.Designation.Value + "'").Scan(&editEmployeeVar.Department.Value)
+	checkErr(err)
+	err = db.QueryRow("select departmentName from department where departmentMasterId = '" + editEmployeeVar.Department.Value + "'").Scan(&editEmployeeVar.Department.Label)
+	checkErr(err)
+
+	department = LabVal{
+		Label: editEmployeeVar.Department.Label,
+		Value: editEmployeeVar.Department.Value,
+	}
+
+	err = db.QueryRow("select BenefitBundleName from policy_benefit_bundle where BenefitBundleID = '" + editEmployeeVar.BenefitBundle.Value + "'").Scan(&editEmployeeVar.BenefitBundle.Label)
+	checkErr(err)
+
+	benefitbundle = LabVal{
+		Label: editEmployeeVar.BenefitBundle.Label,
+		Value: editEmployeeVar.BenefitBundle.Value,
+	}
+
+	designation = LabVal{
+		Label: editEmployeeVar.Designation.Label,
+		Value: editEmployeeVar.Designation.Value,
+	}
+	editEmployeeVar = EditEmploye{
+		TravelAgencyUserId: travelAgencyUsersId,
+		CompanyName:        editEmployeeVar.CompanyName,
+		VirtualName:        editEmployeeVar.VirtualName,
+		Email:              editEmployeeVar.Email,
+		PersonalEmail:      editEmployeeVar.PersonalEmail,
+		HierarchyId:        editEmployeeVar.HierarchyId,
+		Phone:              editEmployeeVar.Phone,
+		Mobile:             editEmployeeVar.Mobile,
+		Department:         department,
+		Designation:        designation,
+		BenefitBundle:      benefitbundle,
+	}
+
+	b, err := json.Marshal(editEmployeeVar)
+	return string(b)
+}
+
+func SeachAllEmp(table, travelAgencyMasterId, travelAgencyUserName string) string {
+	db = GetDB()
+	var allEmps []AllEmp
+	stmt, err := db.Query("select travelAgencyUsersId, virtualName, email, personalEmail, phone, designation, designationId, benefitBundleId from " + table + " where travelAgencyMasterId = '" + travelAgencyMasterId + "' and virtualName like '%" + travelAgencyUserName + "%'")
+	checkErr(err)
+
+	var benefitbundle LabVal
+	var designation LabVal
+	var department LabVal
+	for stmt.Next() {
+		var allEmp AllEmp
+
+		err := stmt.Scan(&allEmp.TravelAgencyUserId, &allEmp.VirtualName, &allEmp.Email, &allEmp.PersonalEmail, &allEmp.Phone, &allEmp.Designation.Label, &allEmp.Designation.Value, &allEmp.BenefitBundle.Value)
+		checkErr(err)
+		err = db.QueryRow("select BenefitBundleName from policy_benefit_bundle where BenefitBundleID = '" + allEmp.BenefitBundle.Value + "'").Scan(&allEmp.BenefitBundle.Label)
+		checkErr(err)
+
+		err = db.QueryRow("select department from designationmaster where designationMasterId = '" + allEmp.Designation.Value + "'").Scan(&allEmp.Department.Value)
+		checkErr(err)
+
+		err = db.QueryRow("select departmentName from department where departmentMasterId = '" + allEmp.Department.Value + "'").Scan(&allEmp.Department.Label)
+		checkErr(err)
+
+		fmt.Println(allEmp.BenefitBundle.Label, "   ", allEmp.VirtualName)
+		benefitbundle = LabVal{
+			Label: allEmp.BenefitBundle.Label,
+			Value: allEmp.BenefitBundle.Value,
+		}
+		designation = LabVal{
+			Label: allEmp.Designation.Label,
+			Value: allEmp.Designation.Value,
+		}
+		department = LabVal{
+			Label: allEmp.Department.Label,
+			Value: allEmp.Department.Value,
+		}
+		allEmp = AllEmp{
+			TravelAgencyUserId: allEmp.TravelAgencyUserId,
+			VirtualName:        allEmp.VirtualName,
+			Email:              allEmp.Email,
+			PersonalEmail:      allEmp.PersonalEmail,
+			Phone:              allEmp.Phone,
+			Department:         department,
+			Designation:        designation,
+			BenefitBundle:      benefitbundle,
+		}
+		allEmps = append(allEmps, allEmp)
+	}
+	b, err := json.Marshal(allEmps)
+	return string(b)
+}
+
+func ListAllEmployees(table, companyID string, FormCondVal, ColumnCondVal []string) string {
+	db = GetDB()
+	var allEmps []AllEmp
+	conditionStr := createCondStr(FormCondVal, ColumnCondVal)
+	stmt, err := db.Query("select travelAgencyUsersId, virtualName, email, personalEmail, phone, designation, designationId, benefitBundleId from " + table + conditionStr + " and designationId IS NOT NULL and status = '1'")
+	checkErr(err)
+	for stmt.Next() {
+		var allEmp AllEmp
+
+		err := stmt.Scan(&allEmp.TravelAgencyUserId, &allEmp.VirtualName, &allEmp.Email, &allEmp.PersonalEmail, &allEmp.Phone, &allEmp.Designation.Label, &allEmp.Designation.Value, &allEmp.BenefitBundle.Value)
+		checkErr(err)
+
+		err = db.QueryRow("select BenefitBundleName from policy_benefit_bundle where BenefitBundleID = '" + allEmp.BenefitBundle.Value + "'").Scan(&allEmp.BenefitBundle.Label)
+		checkErr(err)
+
+		err = db.QueryRow("select department from designationmaster where designationMasterId = '" + allEmp.Designation.Value + "'").Scan(&allEmp.Department.Value)
+		checkErr(err)
+
+		err = db.QueryRow("select departmentName from department where departmentMasterId = '" + allEmp.Department.Value + "'").Scan(&allEmp.Department.Label)
+		checkErr(err)
+
+		var benefitbundle LabVal
+		var designation LabVal
+		var department LabVal
+
+		benefitbundle = LabVal{
+			Label: allEmp.BenefitBundle.Label,
+			Value: allEmp.BenefitBundle.Value,
+		}
+		designation = LabVal{
+			Label: allEmp.Designation.Label,
+			Value: allEmp.Designation.Value,
+		}
+		department = LabVal{
+			Label: allEmp.Department.Label,
+			Value: allEmp.Department.Value,
+		}
+
+		allEmp = AllEmp{
+			TravelAgencyUserId: allEmp.TravelAgencyUserId,
+			VirtualName:        allEmp.VirtualName,
+			Email:              allEmp.Email,
+			PersonalEmail:      allEmp.PersonalEmail,
+			Phone:              allEmp.Phone,
+			Department:         department,
+			Designation:        designation,
+			BenefitBundle:      benefitbundle,
+		}
+		allEmps = append(allEmps, allEmp)
+	}
+	b, err := json.Marshal(allEmps)
+	return string(b)
+
+}
+
 func ListUnassignedEmployees(table, companyID string, FormCondVal, ColumnCondVal []string) string {
 	db = GetDB()
 	var empDetail EmpDetail
@@ -502,7 +662,7 @@ func ListUnassignedEmployees(table, companyID string, FormCondVal, ColumnCondVal
 	conditionStr := createCondStr(FormCondVal, ColumnCondVal)
 
 	//var Id string
-	stmt, err := db.Query("select travelAgencyUsersId, virtualName, email, personalEmail, phone, designation from " + table + conditionStr + " and designationId IS NULL")
+	stmt, err := db.Query("select travelAgencyUsersId, virtualName, email, personalEmail, phone, designation from " + table + conditionStr + " and designationId IS NULL and status = '1'")
 	//return Id
 	checkErr(err)
 	for stmt.Next() {
@@ -603,8 +763,8 @@ func createCondStr(formCondVal []string, columnCondVal []string) string {
 func GetDB() *sql.DB {
 	var err error
 	if db == nil {
-		//db, err = sql.Open("mysql", "root:@/company_policy?parseTime=true&charset=utf8")
-		db, err = sql.Open("mysql", "sriram:sriram123@tcp(127.0.0.1:3306)/hotnix_dev?charset=utf8")
+		db, err = sql.Open("mysql", "root:@/company_policy?parseTime=true&charset=utf8")
+		//db, err = sql.Open("mysql", "sriram:sriram123@tcp(127.0.0.1:3306)/hotnix_dev?charset=utf8")
 
 		checkErr(err)
 	}

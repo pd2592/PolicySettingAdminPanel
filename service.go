@@ -105,6 +105,10 @@ func serv(table string, methType string, companyID string, Form []string, Column
 				{
 					result = ListUnassignedEmployees(table, companyID, FormCondVal, ColumnCondVal)
 				}
+			case table == "travelagencyusers" && ColumnCondVal != nil && companyID == "":
+				{
+					result = ListAllEmployees(table, companyID, FormCondVal, ColumnCondVal)
+				}
 			default:
 				{
 					fmt.Println("dedault")
